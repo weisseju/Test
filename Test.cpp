@@ -10,6 +10,8 @@
 #include <fstream>
 #include <chrono>
 #include <functional>
+#include <execution>
+
 #include <iomanip>
 // std::for_each(
 #include <algorithm>
@@ -192,7 +194,7 @@ public:
     void Longitude(std::string const& newVal) { mLoc.second = atof(newVal.c_str()); }
 
 private:
-    // early binding Funktionen, behandeln nur die loaken Datenelemente
+    // early binding Funktionen, behandeln nur die lokalen Datenelemente
     void _init(void) { mLoc = { 0.0, 0.0 }; }
     void _copy(TData const& ref) { mLoc = ref.mLoc; }
     void _swap(TData&& ref) noexcept { swap(mLoc, ref.mLoc); }
@@ -241,11 +243,15 @@ const func_vector funcs = {
 };
 
 template <typename ty>
-size_t Read_0(data_vector<ty>& vData, func_vector const& funcs, std::istream& is) {
+size_t Read_0(data_vector<ty>& vData, func_vector const& funcs, std::istream& ifs) {
     // clear
+    // hiermit wird das dynamische Vergrößern des vectors verhindert
+//    vData.reserve(std::count(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>(), '\n'));
+    // nach 1. Einlesen zurück auf Anfang
+//    ifs.seekg(0, std::ios::beg);
     size_t iLineCnt = 0u;
     std::string strRow;
-    while (std::getline(is, strRow)) {
+    while (std::getline(ifs, strRow)) {
         TData<double> data;
         auto input = tokenize(strRow, ";", 9);
         //size_t iCount = 0u;
@@ -256,6 +262,23 @@ size_t Read_0(data_vector<ty>& vData, func_vector const& funcs, std::istream& is
         }
     return iLineCnt;
     }
+
+template<typename ty>
+size_t Read_1(data_vector<ty>& vData, func_vector const& funs, std::string const& buffer) {
+    size_t pos = 0u;
+    for (auto [pos, end] = std::make_pair( 0u, buffer.find('\n') ); end != std::string::npos; pos = end + 1, end = buffer.find('\n', pos)) {
+        size_t iCnt = 0u;
+        TData<ty> data;
+        do {
+            auto tmp = buffer.find(';', pos);
+            // Spezialfall letztes Element einer Zeile
+            if (tmp > end) tmp = end;
+            funcs[iCnt++](data, buffer.substr(pos, tmp - pos));
+            pos = tmp + 1;
+        } while (pos < end);
+        vData.emplace_back(std::forward<TData<ty>>(data));
+    }
+}
 
 template <typename ty>
 inline void Write(data_vector<ty>& vData, std::ostream& os) {
@@ -269,43 +292,102 @@ inline void Write(data_vector<ty>& vData, std::ostream& os) {
         });
 }
 
+// 100 pages als Lesepuffer definiert Windows pagesize 4 K
+std::array<char, 4'096 * 100> buffer;
+
+void Test1(std::string const& strFilename) {
+    std::cout << "1st Test, Reading sequential with getline, vector dynamic increased. \n";
+    data_vector<double> vecData;
+    std::ifstream ifs(strFilename);
+    ifs.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
+    if (!ifs.is_open()) {
+        std::cerr << "File \"berlin_infos.dat\" can't open!\n";
+        return;
+    }
+
+    std::chrono::milliseconds runtime;
+    std::cout << Call(runtime, Read_0<double>, std::ref(vecData), std::cref(funcs), std::ref(ifs)) << " datasets read\n";
+    std::cout << std::setw(12) << std::setprecision(3) << runtime.count() / 1000. << " sec\n";
+
+    std::ofstream ofs("Testausgabe.txt");
+    Write<double>(vecData, ofs);
+}
+
+// hiermit gibt es keine lästige dynamische Vergrößerung des vectors mehr
+void Test2(std::string const& strFilename) {
+    std::cout << "2nd Test, Reading with stringstream with getline, vector reserved.\n";
+    std::ifstream ins(strFilename, std::ifstream::binary);
+    if (!ins) {
+        std::cerr << "file with name \"" << strFilename << "\" can't open.\n";
+        return;
+    }
+    else {
+        ins.seekg(0, std::ios::end);
+        auto size = ins.tellg();
+        ins.seekg(0, std::ios::beg);
+        std::string strBuffer(size, '\0');
+        // Puffer mit Daten füllen
+        ins.read(strBuffer.data(), size);
+        ins.close();
+        data_vector<double> vData;
+        //vData.reserve(std::count(strBuffer.begin(), strBuffer.end(), '\n'));
+        vData.reserve(std::count(std::execution::par, strBuffer.begin(), strBuffer.end(), '\n'));
+        std::istringstream iss(strBuffer);
+
+        std::chrono::milliseconds runtime;
+        std::cout << Call(runtime, Read_0<double>, std::ref(vData), std::cref(funcs), std::ref(iss)) << " datasets read\n";
+        std::cout << std::setw(12) << std::setprecision(3) << runtime.count() / 1000. << " sec\n";
+
+        std::ofstream ofs("Testausgabe.txt");
+        Write<double>(vData, ofs);
+    }
+}
+
+void Test3(std::string const& strFilename) {
+    std::cout << "3rd Test, string operations, vector reserved.\n";
+    std::ifstream ins(strFilename, std::ifstream::binary);
+    if (!ins) {
+        std::cerr << "file with name \"" << strFilename << "\" can't open.\n";
+        return;
+    }
+    else {
+        ins.seekg(0, std::ios::end);
+        auto size = ins.tellg();
+        ins.seekg(0, std::ios::beg);
+        std::string strBuffer(size, '\0');
+        // Puffer mit Daten füllen
+        ins.read(strBuffer.data(), size);
+        ins.close();
+        data_vector<double> vData;
+        //vData.reserve(std::count(strBuffer.begin(), strBuffer.end(), '\n'));
+        vData.reserve(std::count(std::execution::par, strBuffer.begin(), strBuffer.end(), '\n'));
+
+        std::chrono::milliseconds runtime;
+        std::cout << Call(runtime, Read_1<double>, std::ref(vData), std::cref(funcs), std::cref(strBuffer)) << " datasets read\n";
+        std::cout << std::setw(12) << std::setprecision(3) << runtime.count() / 1000. << " sec\n";
+
+        std::ofstream ofs("Testausgabe.txt");
+        Write<double>(vData, ofs);
+    }
+}
+
 template <typename ty>
 void Calculate(Location<ty> const& a, Location<ty> const& b) {
     std::cout << a << " -> " << b << "\n";
 }
 
-// 100 pages als Lesepuffer definiert Windows pagesize 4 K
-std::array<char, 4'096 * 100> buffer;
-
 int main() {
-    TData<double> data;
-
     // Synchronisierung zwischen C stdin und C++ abschalten
     std::ios_base::sync_with_stdio(false);
-
     std::cout.setf(std::ios::showpoint);
     std::cout.setf(std::ios::fixed);
-    Location<double> point = { 2.0, 1.0 };
+/*    Location<double> point = {2.0, 1.0};
 
-    data_vector<double> vecData;
-    std::ifstream ifs("berlin_infos.dat");
-    
-    std::cout << buffer.size() << "\n";
-
-    // eigenen Lesepuffer "buffer" dem stream zuweisen
-    ifs.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
-    if (!ifs.is_open()) {
-        std::cerr << "File \"berlin_infos.dat\" can't open!\n";
-        return 1;
-    }
-
-// ATTENTION: C++ 20 is NEEDED in order to overload "<<" for "std::chrono::microseconds"
-    std::chrono::milliseconds runtime;
-    std::cout << Call(runtime, Read_0<double>, std::ref(vecData), std::cref(funcs), std::ref(ifs)) << " datasets read\n";
-    std::cout << std::setw(12) << std::setprecision(3) << runtime.count() / 1000. << " sec\n";
 
     std::cout << "Hello World!\n";
     Calculate<double>(data, point);
+ */
+    Test3("berlin_infos.dat");
     return 0;
 }
 
