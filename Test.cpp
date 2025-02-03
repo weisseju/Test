@@ -4,19 +4,88 @@
 #include <iostream>
 #include <utility>
 #include <string>
+#include <string_view> // !! C++17
 #include <vector>
 #include <array>
 
 #include <fstream>
 #include <chrono>
 #include <functional>
-#include <execution>
+#include <execution> // !! C++17
 
 #include <iomanip>
 // std::for_each(
 #include <algorithm>
 
+#include <iterator>
+#include <optional> // !! C++17
+#include <atomic>
 
+struct my_line_iterator {
+    using iterator_category = std::input_iterator_tag;
+    using value_type        = std::string_view;
+    using difference_type   = std::ptrdiff_t;
+    using reference_type    = const value_type&;
+    using pointer_type      = const value_type*;
+
+    // Definition des Endes
+    my_line_iterator() { };
+    my_line_iterator(std::string_view const& input) : theText(input) { ++*this; };
+
+    my_line_iterator& operator = (std::string_view const& vw) {
+        theText = vw;
+        start_pos = 0u;
+        end_pos = 0u;
+        return *this;
+    }
+
+    my_line_iterator& operator = (my_line_iterator const& ref) {
+        theText = ref.theText;
+        theLine = ref.theLine;
+        start_pos = ref.start_pos;
+        end_pos = ref.end_pos;
+        return *this;
+    }
+
+    reference_type operator*() const { return theLine; }
+    pointer_type operator->() const { return &theLine; }
+
+    // Prefix Operator
+    my_line_iterator& operator++() {
+        if (theText) {
+            end_pos = theText->find('\n', start_pos);
+            if (end_pos != std::string_view::npos) {
+                theLine = theText->substr(start_pos, end_pos - start_pos);
+                start_pos = end_pos + 1;
+            }
+            else {
+                theText = { };
+                // theText = std::nullopt;
+            }
+        }
+        return *this;
+    }
+
+    // durch (int) wird der Postfix Operator
+    my_line_iterator operator++(int) {
+        auto elem(*this);
+        ++*this;
+        return elem;
+    }
+
+    friend bool operator == (my_line_iterator const& lhs, my_line_iterator const& rhs) {
+        return lhs.theText == rhs.theText;
+    }
+
+    friend bool operator != (my_line_iterator const& lhs, my_line_iterator const& rhs) {
+        return !(lhs == rhs);
+    }
+
+private:
+    std::optional<std::string_view> theText = { };
+    std::string_view theLine;
+    size_t start_pos = 0u, end_pos = 0u;
+};
 
 template <typename tty, typename fty, typename... Args>
 inline auto Call(tty& time, fty function, Args... args) {
@@ -110,6 +179,27 @@ public:
     void UrbanUnit(std::string const& newVal) { strUrbanUnit = newVal; }
     void UrbanUnit_Old(std::string const& newVal) { strUrbanUnit_Old = newVal; }
     void District(std::string const& newVal) { strDistrict = newVal; }
+
+    /// rvalues
+    /// {
+    void City(std::string&& newVal) { strCity = std::forward<std::string>(newVal); }
+    void Street(std::string&& newVal) { strStreet = std::forward<std::string>(newVal); }
+    void StreetNumber(std::string&& newVal) { strStreetNumber = std::forward<std::string>(newVal); }
+    void ZipCode(std::string&& newVal) { strZipCode = std::forward<std::string>(newVal); }
+    void UrbanUnit(std::string&& newVal) { strUrbanUnit = std::forward<std::string>(newVal); }
+    void UrbanUnit_Old(std::string&& newVal) { strUrbanUnit_Old = std::forward<std::string>(newVal); }
+    void District(std::string&& newVal) { strDistrict = std::forward<std::string>(newVal); }
+
+    /// String_Views<summary>
+    /// 
+    void City(std::string_view const& newVal) { strCity = std::move(std::string{ newVal.data(), newVal.size() }); }
+    void Street(std::string_view const& newVal) { strStreet = std::move(std::string{ newVal.data(), newVal.size() }); }
+    void StreetNumber(std::string_view const& newVal) { strStreetNumber = std::move(std::string{ newVal.data(), newVal.size() }); }
+    void ZipCode(std::string_view const& newVal) { strZipCode = std::move(std::string{ newVal.data(), newVal.size() }); }
+    void UrbanUnit(std::string_view const& newVal) { strUrbanUnit = std::move(std::string{ newVal.data(), newVal.size() }); }
+    void UrbanUnit_Old(std::string_view const& newVal) { strUrbanUnit_Old = std::move(std::string{ newVal.data(), newVal.size() }); }
+    void District(std::string_view const& newVal) { strDistrict = std::move(std::string{ newVal.data(), newVal.size() }); }
+
 private:
     void _init(void) {
         strCity          = "";
@@ -190,8 +280,15 @@ public:
     void Latitude(ty const& newVal) { mLoc.first = newVal; }
     void Longitude(ty const& newVal) { mLoc.second = newVal; }
 
-    void Latitude(std::string const& newVal) { mLoc.first = atof(newVal.c_str()); }
-    void Longitude(std::string const& newVal) { mLoc.second = atof(newVal.c_str()); }
+    void Latitude(std::string const& newVal) { auto result = std::from_chars(newVal.data(), newVal.data() + newVal.size(), mLoc.first); } //mLoc.first = std::stod(newVal); }
+    void Longitude(std::string const& newVal) { auto result = std::from_chars(newVal.data(), newVal.data() + newVal.size(), mLoc.second); } //mLoc.second = std::stod(newVal); }
+
+    void Latitude(std::string&& newVal) { auto result = std::from_chars(newVal.data(), newVal.data() + newVal.size(), mLoc.first); } //mLoc.first = std::stod(newVal); }
+    void Longitude(std::string&& newVal) { auto result = std::from_chars(newVal.data(), newVal.data() + newVal.size(), mLoc.second); } //mLoc.second = std::stod(newVal); }
+
+    // String_Views
+    void Latitude(std::string_view const& newVal) { auto result = std::from_chars(newVal.data(), newVal.data() + newVal.size(), mLoc.first); } //mLoc.first = std::stod(newVal); }
+    void Longitude(std::string_view const& newVal) { auto result = std::from_chars(newVal.data(), newVal.data() + newVal.size(), mLoc.second); } //mLoc.second = std::stod(newVal); }
 
 private:
     // early binding Funktionen, behandeln nur die lokalen Datenelemente
@@ -242,6 +339,23 @@ const func_vector funcs = {
     [](TData<double>&, std::string const&) { throw std::runtime_error("unexpected number of elements."); }
 };
 
+using func_vector_vw = std::vector<std::function<void(TData<double>&, std::string_view const&)>>;
+
+const func_vector_vw funcs_vw = {
+    /* [] = lamda */
+    [](TData<double>& data, std::string_view const& val) { data.City(val); },
+    //nullptr;
+    [](TData<double>& data, std::string_view const& val) { data.Street(val); },
+    [](TData<double>& data, std::string_view const& val) { data.StreetNumber(val); },
+    [](TData<double>& data, std::string_view const& val) { data.ZipCode(val); },
+    [](TData<double>& data, std::string_view const& val) { data.UrbanUnit(val); },
+    [](TData<double>& data, std::string_view const& val) { data.UrbanUnit_Old(val); },
+    [](TData<double>& data, std::string_view const& val) { data.District(val); },
+    [](TData<double>& data, std::string_view const& val) { data.Latitude(val); },
+    [](TData<double>& data, std::string_view const& val) { data.Longitude(val); },
+    [](TData<double>&, std::string_view const&) { throw std::runtime_error("unexpected number of elements."); }
+};
+
 template <typename ty>
 size_t Read_0(data_vector<ty>& vData, func_vector const& funcs, std::istream& ifs) {
     // clear
@@ -259,16 +373,22 @@ size_t Read_0(data_vector<ty>& vData, func_vector const& funcs, std::istream& if
         for (size_t iCnt = 0u; auto const& element : input) { funcs[iCnt](data, input[iCnt]); ++iCnt; }
         vData.emplace_back(std::forward<TData<double>>(data));
         ++iLineCnt;
-        }
-    return iLineCnt;
     }
+    return iLineCnt;
+}
 
+// Erklärung Evolution von C++ 6.3.2023 46:09 min bis 1:06:27 
 template<typename ty>
-size_t Read_1(data_vector<ty>& vData, func_vector const& funs, std::string const& buffer) {
+size_t Read_1(data_vector<ty>& vData, func_vector const& funcs, std::string const& buffer) {
     size_t pos = 0u;
+    // C++17 structured binding auto [pos, end] = std::make_pair
+    // zeilenweise suchen
+    // std::string liefert seine Endposition in "std::string::npos"
+    // C++ liefert , Operator: wird hier in der Neu-Initialisierung angewendet: pos = end + 1 UND(,) end = ...
     for (auto [pos, end] = std::make_pair( 0u, buffer.find('\n') ); end != std::string::npos; pos = end + 1, end = buffer.find('\n', pos)) {
         size_t iCnt = 0u;
         TData<ty> data;
+        // 1 ganze Zeile mit dem func vector tokenizen
         do {
             auto tmp = buffer.find(';', pos);
             // Spezialfall letztes Element einer Zeile
@@ -276,8 +396,35 @@ size_t Read_1(data_vector<ty>& vData, func_vector const& funs, std::string const
             funcs[iCnt++](data, buffer.substr(pos, tmp - pos));
             pos = tmp + 1;
         } while (pos < end);
+        // von data nach vData 
         vData.emplace_back(std::forward<TData<ty>>(data));
     }
+//    return pos;
+}
+
+template<typename ty>
+size_t Read_2(data_vector<ty>& vData, func_vector_vw const& funcs, std::string const& buffer) {
+    //size_t pos = 0u;
+    std::string_view view(buffer.c_str(), buffer.size());
+    // C++17 structured binding auto [pos, end] = std::make_pair
+    // zeilenweise suchen
+    // std::string liefert seine Endposition in "std::string::npos"
+    // C++ liefert , Operator: wird hier in der Neu-Initialisierung angewendet: pos = end + 1 UND(,) end = ...
+    for (auto [pos, end] = std::make_pair(0u, view.find('\n')); end != std::string_view::npos; pos = end + 1, end = view.find('\n', pos)) {
+        size_t iCnt = 0u;
+        TData<ty> data;
+        // 1 ganze Zeile mit dem func vector tokenizen
+        do {
+            auto tmp = view.find(';', pos);
+            // Spezialfall letztes Element einer Zeile
+            if (tmp > end) tmp = end;
+            funcs[iCnt++](data, view.substr(pos, tmp - pos));
+            pos = tmp + 1;
+        } while (pos < end);
+        // von data nach vData 
+        vData.emplace_back(std::forward<TData<ty>>(data));
+    }
+    //    return pos;
 }
 
 template <typename ty>
@@ -315,7 +462,7 @@ void Test1(std::string const& strFilename) {
 
 // hiermit gibt es keine lästige dynamische Vergrößerung des vectors mehr
 void Test2(std::string const& strFilename) {
-    std::cout << "2nd Test, Reading with stringstream with getline, vector reserved.\n";
+    std::cout << "2nd Test, Reading about stringstream with getline, vector reserved.\n";
     std::ifstream ins(strFilename, std::ifstream::binary);
     if (!ins) {
         std::cerr << "file with name \"" << strFilename << "\" can't open.\n";
@@ -353,6 +500,7 @@ void Test3(std::string const& strFilename) {
     else {
         ins.seekg(0, std::ios::end);
         auto size = ins.tellg();
+        // Lesezeiger wieder auf Anfang stellen
         ins.seekg(0, std::ios::beg);
         std::string strBuffer(size, '\0');
         // Puffer mit Daten füllen
@@ -364,6 +512,35 @@ void Test3(std::string const& strFilename) {
 
         std::chrono::milliseconds runtime;
         std::cout << Call(runtime, Read_1<double>, std::ref(vData), std::cref(funcs), std::cref(strBuffer)) << " datasets read\n";
+        std::cout << std::setw(12) << std::setprecision(3) << runtime.count() / 1000. << " sec\n";
+
+        std::ofstream ofs("Testausgabe.txt");
+        Write<double>(vData, ofs);
+    }
+}
+
+void Test4(std::string const& strFilename) {
+    std::cout << "4th Test, string_view operations, vector reserved.\n";
+    std::ifstream ins(strFilename, std::ifstream::binary);
+    if (!ins) {
+        std::cerr << "file with name \"" << strFilename << "\" can't open.\n";
+        return;
+    }
+    else {
+        ins.seekg(0, std::ios::end);
+        auto size = ins.tellg();
+        // Lesezeiger wieder auf Anfang stellen
+        ins.seekg(0, std::ios::beg);
+        std::string strBuffer(size, '\0');
+        // Puffer mit Daten füllen
+        ins.read(strBuffer.data(), size);
+        ins.close();
+        data_vector<double> vData;
+        //vData.reserve(std::count(strBuffer.begin(), strBuffer.end(), '\n'));
+        vData.reserve(std::count(std::execution::par, strBuffer.begin(), strBuffer.end(), '\n'));
+
+        std::chrono::milliseconds runtime;
+        std::cout << Call(runtime, Read_2<double>, std::ref(vData), std::cref(funcs_vw), std::cref(strBuffer)) << " datasets read\n";
         std::cout << std::setw(12) << std::setprecision(3) << runtime.count() / 1000. << " sec\n";
 
         std::ofstream ofs("Testausgabe.txt");
@@ -387,7 +564,7 @@ int main() {
     std::cout << "Hello World!\n";
     Calculate<double>(data, point);
  */
-    Test3("berlin_infos.dat");
+    Test4("berlin_infos.dat");
     return 0;
 }
 
